@@ -1,14 +1,14 @@
 #include "pch.h"
-#include "../Common\RingBuffer/RingBuffer.h"
-#include "../Common\PacketBuffer/PacketBuffer.h"
 #include "LanServer.h"
+
+
 
 LanServer::~LanServer()
 {
 	closesocket(mListenSock);
 	WSACleanup();
 
-	for (DWORD i = 0; i < THREAD_MAX; i++)
+	for (DWORD i = 0; i < mMaxThreadNum; i++)
 	{
 		CloseHandle(LanServer::mThread[i]);
 	}
@@ -104,27 +104,90 @@ bool LanServer::Start(const WCHAR* outServerIP, const WORD port, const DWORD wor
 	mMaxThreadNum = workThreadNum + 1;
 
 	// Thread 생성
-#ifdef SINGLE_THREAD
-	mThread[WORKER_THREAD_1] = (HANDLE)_beginthreadex(NULL, 0, &WorkerThread, this, 0, &mThreadID[WORKER_THREAD_1]);
-#else
-	mThread[WORKER_THREAD_1] = (HANDLE)_beginthreadex(NULL, 0, &WorkerThread, NULL, 0, &mThreadID[WORKER_THREAD_1]);
-	mThread[WORKER_THREAD_2] = (HANDLE)_beginthreadex(NULL, 0, &WorkerThread, NULL, 0, &mThreadID[WORKER_THREAD_2]);
-	mThread[WORKER_THREAD_3] = (HANDLE)_beginthreadex(NULL, 0, &WorkerThread, NULL, 0, &mThreadID[WORKER_THREAD_3]);
-	mThread[WORKER_THREAD_4] = (HANDLE)_beginthreadex(NULL, 0, &WorkerThread, NULL, 0, &mThreadID[WORKER_THREAD_4]);
-	mThread[WORKER_THREAD_5] = (HANDLE)_beginthreadex(NULL, 0, &WorkerThread, NULL, 0, &mThreadID[WORKER_THREAD_5]);
-#endif
-	mThread[ACCEPT_THREAD] = (HANDLE)_beginthreadex(NULL, 0, &AcceptThread, this, 0, &mThreadID[ACCEPT_THREAD]);
-	
-	for (int i = 0; i < THREAD_MAX; i++)
+	mThread = new HANDLE[mMaxThreadNum];
+
+	for (DWORD i = 0; i < workThreadNum; i++)
+	{
+		mThread[i] = (HANDLE)_beginthreadex(NULL, 0, &WorkerThread, this, 0, &mThreadID);
+	}
+	mThread[workThreadNum] = (HANDLE)_beginthreadex(NULL, 0, &AcceptThread, this, 0, &mThreadID);
+
+	for (DWORD i = 0; i < mMaxThreadNum; i++)
 	{
 		if (LanServer::mThread[i] == NULL)
 		{
-			CONSOLE_LOG(LOG_LEVEL_ERROR, L"thread[WORKER_THREAD_%d] NULL:%d ",i, WSAGetLastError());
+			CONSOLE_LOG(LOG_LEVEL_ERROR, L"thread[WORKER_THREAD_%d] NULL:%d ", i, WSAGetLastError());
 			return false;
 		}
 	}
 
-	retVal = WaitForMultipleObjects(THREAD_MAX, mThread, TRUE, INFINITE);
+	retVal = WaitForMultipleObjects(mMaxThreadNum, mThread, TRUE, INFINITE);
+
+	delete[] mThread;
+//#ifdef SINGLE_THREAD
+//	mThread[WORKER_THREAD_1] = (HANDLE)_beginthreadex(NULL, 0, &WorkerThread, this, 0, &mThreadID[WORKER_THREAD_1]);
+//#else
+//	mThread[WORKER_THREAD_1] = (HANDLE)_beginthreadex(NULL, 0, &WorkerThread, NULL, 0, &mThreadID[WORKER_THREAD_1]);
+//	mThread[WORKER_THREAD_2] = (HANDLE)_beginthreadex(NULL, 0, &WorkerThread, NULL, 0, &mThreadID[WORKER_THREAD_2]);
+//	mThread[WORKER_THREAD_3] = (HANDLE)_beginthreadex(NULL, 0, &WorkerThread, NULL, 0, &mThreadID[WORKER_THREAD_3]);
+//	mThread[WORKER_THREAD_4] = (HANDLE)_beginthreadex(NULL, 0, &WorkerThread, NULL, 0, &mThreadID[WORKER_THREAD_4]);
+//	mThread[WORKER_THREAD_5] = (HANDLE)_beginthreadex(NULL, 0, &WorkerThread, NULL, 0, &mThreadID[WORKER_THREAD_5]);
+//#endif
+//	mThread[ACCEPT_THREAD] = (HANDLE)_beginthreadex(NULL, 0, &AcceptThread, this, 0, &mThreadID[ACCEPT_THREAD]);
+//	
+//	for (int i = 0; i < THREAD_MAX; i++)
+//	{
+//		if (LanServer::mThread[i] == NULL)
+//		{
+//			CONSOLE_LOG(LOG_LEVEL_ERROR, L"thread[WORKER_THREAD_%d] NULL:%d ",i, WSAGetLastError());
+//			return false;
+//		}
+//	}
+
+//	retVal = WaitForMultipleObjects(THREAD_MAX, mThread, TRUE, INFINITE);
+
+	return true;
+}
+
+bool LanServer::SendPacket(const DWORD64 sessionID, PacketBuffer& packetBuffer)
+{
+	SessionInfo* sessionInfo = nullptr;
+	HeaderInfo header;
+	int retVal;
+
+	auto iterSessionData = mSessionData.find(sessionID);
+	if (iterSessionData == mSessionData.end())
+	{
+		CONSOLE_LOG(LOG_LEVEL_ERROR, L"SendPacket mSessionData find error![sessionID:%d]", sessionID);
+		return false;
+	}
+	sessionInfo = iterSessionData->second;
+
+	// header 담기
+	header.length = PACKET_SIZE;
+	retVal = sessionInfo->sendRingBuffer->Enqueue((char*)&header, sizeof(header));
+	if (retVal < sizeof(header))
+	{
+		CONSOLE_LOG(LOG_LEVEL_ERROR, L"[SessionID:%d] Enqueue header Error[%d] RingBuf useSize:%d",
+			sessionInfo->sessionID,
+			retVal,
+			sessionInfo->sendRingBuffer->GetUseSize());
+	}
+
+	retVal = sessionInfo->sendRingBuffer->Enqueue(packetBuffer.GetBufferPtr(), packetBuffer.GetDataSize());
+
+	if (retVal < packetBuffer.GetDataSize())
+	{
+		CONSOLE_LOG(LOG_LEVEL_ERROR, L"[SessionID:%d] Enqueue packetBuffer Error[%d] RingBuf useSize:%d",
+			sessionInfo->sessionID,
+			retVal,
+			sessionInfo->sendRingBuffer->GetUseSize());
+	}
+
+	CONSOLE_LOG(LOG_LEVEL_DEBUG, L"[SessionID:%d] SendRingBuffer Enqueue Size:%d RingBuf useSize:%d",
+		sessionInfo->sessionID,
+		packetBuffer.GetDataSize(),
+		sessionInfo->sendRingBuffer->GetUseSize());
 
 	return true;
 }
@@ -204,17 +267,20 @@ int LanServer::WorkerThread_Working()
 		if (transferredBytes == 0)
 		{
 			//연결종료
-			CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"User transferredBytes0![SesssionID:%lld]", sessionInfo->sessionID);
+			CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"User transferredBytes0![SesssionID:%d]", sessionInfo->sessionID);
 		}
 		else if (overlapped == &(sessionInfo->recvOverlapped))
 		{
 			sessionInfo->recvRingBuffer->MoveWritePos(transferredBytes);
 
 			// recvProcess 링버퍼로 담은 부분 보내기 처리 진행.
-			//RecvProcess(sessionInfo);
+			RecvProcess(sessionInfo);
 
 			// 비동기 Recv 시작
 			RecvPost(sessionInfo);
+
+			// 비동기 Send 시작 OnRecv 함수에서 SendRingBuffer 진행
+			SendProcess(sessionInfo);
 		}
 		else if (overlapped == &(sessionInfo->sendOverlapped))
 		{
@@ -225,19 +291,22 @@ int LanServer::WorkerThread_Working()
 				sessionInfo->sendRingBuffer->GetUseSize(), sessionInfo->sendRingBuffer->GetWriteSize(),
 				sessionInfo->sendRingBuffer->GetReadSize());
 
-			//if (SendProcess(sessionInfo) == false)
-			{
-				// 하단부에서 IO Count 를 감소시키기 때문에 Send 처리가 안되도 인터락 증가
-				InterlockedIncrement(&sessionInfo->ioCount);
-			}
-		}
+			// 완료 통지가 왔기 때문에 sendFlag 값 초기화
+			sessionInfo->sendFlag = false;
 
+			// 비동기 Send 시작 OnRecv 함수에서 SendRingBuffer 진행
+			SendProcess(sessionInfo);
+		}
 		// 입출력 통보가 왔으므로 IO Count 감소
 		if (InterlockedDecrement(&sessionInfo->ioCount) == 0) // IO 가 0이므로 종료되었다고 판단하여 모두 삭제 진행
 		{
-			//Release(sessionInfo);
+			Release(sessionInfo);
 		}
+
 	}
+
+	
+	//	OnError(dfFLAG_ERROR, L"SendFlag Error");
 
 	return 0;
 }
@@ -264,13 +333,66 @@ SessionInfo* LanServer::AddSessionInfo(const SOCKET clientSock, SOCKADDR_IN& cli
 	mSessionData.emplace(sessionInfo->sessionID, sessionInfo);
 	ReleaseSRWLockExclusive(&sessionInfo->srwLock);
 
-	CONSOLE_LOG(LOG_LEVEL_DEBUG, L"[sessionID:%lld] session insert size:%d", sessionInfo->sessionID, (int)mSessionData.size());
+	CONSOLE_LOG(LOG_LEVEL_DEBUG, L"[sessionID:%d] session insert size:%d", sessionInfo->sessionID, (int)mSessionData.size());
 
 	return sessionInfo;
 }
 
-void LanServer::SendPost(SessionInfo* sessionInfo)
+void LanServer::SendProcess(SessionInfo* sessionInfo)
 {
+	// 완료통지가 오면 보내는 1:1 구조로 보내기 위해 sendFlag로 체크
+	// 비동기 Send 시작 
+	if (InterlockedCompareExchange((LONG*)&sessionInfo->sendFlag, TRUE, FALSE) == FALSE)
+	{
+		if(SendPost(sessionInfo) == FALSE)
+			sessionInfo->sendFlag = FALSE;
+	}
+}
+
+bool LanServer::SendPost(SessionInfo* sessionInfo)
+{
+	int retVal = 0;
+	WSABUF wsaBuffer;
+	DWORD flags = 0;
+
+	if (sessionInfo->sendRingBuffer->GetUseSize() <= 0)
+	{
+		return false;
+	}
+
+	// 링버퍼의 최대사이즈를 보냄
+	CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"SEND:%s size:%d", (WCHAR*)sessionInfo->sendRingBuffer->GetBufferPtr(),
+		sessionInfo->sendRingBuffer->GetUseSize());
+
+	CONSOLE_LOG(LOG_LEVEL_WARNING, L"SendRingBuffer UseSize:%d", sessionInfo->sendRingBuffer->GetUseSize());
+	// 비동기 입출력 시작
+	wsaBuffer.buf = sessionInfo->sendRingBuffer->GetBufferPtr();
+	wsaBuffer.len = sessionInfo->sendRingBuffer->GetUseSize();
+
+	ZeroMemory(&sessionInfo->sendOverlapped, sizeof(sessionInfo->sendOverlapped));
+	// IOCount 증가
+	InterlockedIncrement(&sessionInfo->ioCount);
+	retVal = WSASend(sessionInfo->clientSock, &wsaBuffer, 1,
+		NULL, flags, &sessionInfo->sendOverlapped, NULL);
+	if (retVal == SOCKET_ERROR)
+	{
+		if (WSAGetLastError() != ERROR_IO_PENDING)
+		{
+			CONSOLE_LOG(LOG_LEVEL_ERROR, L"WSASend error:%d", WSAGetLastError());
+			// IOCount 감소
+			if (InterlockedDecrement(&sessionInfo->ioCount) == 0) // IO 가 0이므로 종료되었다고 판단하여 모두 삭제 진행
+			{
+				Release(sessionInfo);
+			}
+		}
+		else
+		{
+
+			CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"WSA Send IO_PENDIHNG");
+		}
+	}
+
+	return true;
 }
 
 void LanServer::RecvPost(SessionInfo* sessionInfo)
@@ -297,7 +419,10 @@ void LanServer::RecvPost(SessionInfo* sessionInfo)
 		if (WSAGetLastError() != ERROR_IO_PENDING)
 		{
 			CONSOLE_LOG(LOG_LEVEL_ERROR, L"WSARecv error:%d", WSAGetLastError());
-			InterlockedDecrement(&sessionInfo->ioCount);
+			if (InterlockedDecrement(&sessionInfo->ioCount) == 0) // IO 가 0이므로 종료되었다고 판단하여 모두 삭제 진행
+			{
+				Release(sessionInfo);
+			}
 			return;
 		}
 		else
@@ -330,9 +455,8 @@ void LanServer::RecvProcess(SessionInfo* sessionInfo)
 			CONSOLE_LOG(LOG_LEVEL_DEBUG, L"length error![length:%d]", header.length);
 			return;
 		}
-
-		// Peek 이동이기 때문에 읽은 만큼 직접 이동
-		sessionInfo->recvRingBuffer->MoveReadPos(sizeof(header));
+		// Peek 이동이기 때문에 header 읽은 만큼 추가로 더해준다.
+		sessionInfo->recvRingBuffer->MoveReadPos(retVal);
 
 		packetBuffer.Clear();
 		retVal = sessionInfo->recvRingBuffer->Peek(packetBuffer.GetBufferPtr(), header.length);
@@ -344,7 +468,8 @@ void LanServer::RecvProcess(SessionInfo* sessionInfo)
 			return;
 
 		}
-		// Peek 이동이기 때문에 읽은 만큼 직접 이동
+	
+		// Peek 이동이기 때문에 packet 읽은 만큼 직접 이동
 		sessionInfo->recvRingBuffer->MoveReadPos(retVal);
 
 		// 패킷 버퍼도 버퍼에 직접담은 부분이기 때문에 writepos을 직접 이동시켜준다.
@@ -356,39 +481,36 @@ void LanServer::RecvProcess(SessionInfo* sessionInfo)
 		}
 		CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"RECV:%s Size:%d", (WCHAR*)packetBuffer.GetBufferPtr(), retVal);
 
-		CONSOLE_LOG(LOG_LEVEL_WARNING, L"[sessionID:%lld] RecvRingBuf WriteSize:%d ReadSize:%d",
+		CONSOLE_LOG(LOG_LEVEL_WARNING, L"[sessionID:%d] RecvRingBuf WriteSize:%d ReadSize:%d",
 			sessionInfo->sessionID,
 			sessionInfo->recvRingBuffer->GetWriteSize(),
 			sessionInfo->recvRingBuffer->GetReadSize());
 
-
-		// header는 sendRingBuffer에 직접 담기
-		retVal = sessionInfo->sendRingBuffer->Enqueue((char*)&header, sizeof(header));
-		if (retVal < sizeof(header))
-		{
-			CONSOLE_LOG(LOG_LEVEL_ERROR, L"[SessionID:%lld] Enqueue header Error[%d] RingBuf useSize:%d",
-				sessionInfo->sessionID,
-				retVal,
-				sessionInfo->sendRingBuffer->GetUseSize());
-		}
-
 		// Recv 처리 완료 후 처리 함수
 		OnRecv(sessionInfo->sessionID, packetBuffer);
-	/*	retVal = sessionInfo->sendRingBuffer->Enqueue(packetBuffer.GetBufferPtr(), packetBuffer.GetDataSize());
-
-		if (retVal < packetBuffer.GetDataSize())
-		{
-			CONSOLE_LOG(LOG_LEVEL_ERROR, L"[SessionID:%d] Enqueue packetBuffer Error[%d] RingBuf useSize:%d",
-				sessionInfo->sessionID,
-				retVal,
-				sessionInfo->sendRingBuffer->GetUseSize());
-		}
-
-		CONSOLE_LOG(LOG_LEVEL_DEBUG, L"[SessionID:%d] SendRingBuffer Enqueue Size:%d RingBuf useSize:%d",
-			sessionInfo->sessionID,
-			packetBuffer.GetDataSize(),
-			sessionInfo->sendRingBuffer->GetUseSize());
-
-		SendProcess(sessionInfo);*/
 	}
+}
+
+void LanServer::Release(SessionInfo* sessionInfo)
+{
+	_ASSERT(sessionInfo != nullptr);
+	DWORD64 sessionID = sessionInfo->sessionID;
+
+	// 세션 데이터 삭제
+	AcquireSRWLockExclusive(&sessionInfo->srwLock);
+	auto iterSessionData = mSessionData.find(sessionID);
+	if (iterSessionData == mSessionData.end())
+	{
+		CONSOLE_LOG(LOG_LEVEL_ERROR, L"Release session find error![sessionID:%d]", sessionID);
+		return;
+	}
+	closesocket(iterSessionData->second->clientSock);
+	SafeDelete(sessionInfo->recvRingBuffer);
+	SafeDelete(sessionInfo->sendRingBuffer);
+
+	mSessionData.erase(iterSessionData);
+	ReleaseSRWLockExclusive(&sessionInfo->srwLock);
+	SafeDelete(sessionInfo);
+
+	CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"Release [SessionID:%d]", sessionID);
 }

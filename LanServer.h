@@ -1,4 +1,8 @@
 #pragma once
+
+#include "../Common\RingBuffer/RingBuffer.h"
+#include "../Common\PacketBuffer/PacketBuffer.h"
+
 struct SessionInfo
 {
 	SOCKET clientSock = INVALID_SOCKET;
@@ -10,7 +14,8 @@ struct SessionInfo
 	OVERLAPPED recvOverlapped;
 	OVERLAPPED sendOverlapped;
 	SRWLOCK srwLock;
-	long ioCount; // io count 함수
+	long ioCount = 0; // io count 함수
+	long sendFlag = false;
 };
 
 #pragma pack(push, 1)   
@@ -32,8 +37,15 @@ public:
 	virtual ~LanServer();
 
 public:
+	enum PACKET_INDEX
+	{
+		PACKET_SIZE = 8,
+	};
+
+public:
 	bool Start(const WCHAR* outServerIP, const WORD port, 
 		const DWORD workThreadNum, const bool isNodelay, const DWORD maxUserNum);
+	bool SendPacket(const DWORD64 sessionID, PacketBuffer& packetBuffer);
 
 public:
 	static unsigned __stdcall AcceptThread(void* arguments);
@@ -45,28 +57,30 @@ public:
 	SessionInfo* AddSessionInfo(const SOCKET clientSock, SOCKADDR_IN& clientAddr);
 
 public:
-	void SendPost(SessionInfo* sessionInfo);	// WSA Send 실행 함수
+	void SendProcess(SessionInfo* sessionInfo);
+	bool SendPost(SessionInfo* sessionInfo);	// WSA Send 실행 함수
 	void RecvPost(SessionInfo* sessionInfo);	// WSA Recv 실행 함수
 	void RecvProcess(SessionInfo* sessionInfo); // Recv 데이터를 이용해 보낼거 보내고 처리하는 함수
+	void Release(SessionInfo* sessionInfo);
 
 public: // 실제 컨테츠 부에서 실행 할 가상함수
 	virtual bool OnConnectionRequest(const DWORD ip, const WORD port) PURE; // accept 직후 return false; 시 클라이언트 거부. return true; 시 접속 허용
 	//virtual void OnClientJoin(Client 정보 /SessionID / 기타등등) = 0; // Accept 후 접속처리 완료 후 호출.
 	virtual void OnClientLeave(const DWORD64 sessionID) PURE; // Release 후 호출
-	virtual void OnRecv(const DWORD64 SessionID, const class PacketBuffer& packetBuffer) PURE; // 패킷 수신 완료 후
+	virtual void OnRecv(const DWORD64 sessionID, PacketBuffer& packetBuffer) PURE; // 패킷 수신 완료 후
 
 public: // 소켓 관련 변수
 	SOCKET mListenSock;
 	HANDLE mHcp;
 
 private: // 쓰레드 관련 변수
-	HANDLE mThread[THREAD_MAX];
-	unsigned int mThreadID[THREAD_MAX];
-	DWORD mMaxThreadNum;
+	HANDLE* mThread;
+	unsigned int mThreadID;
+	DWORD mMaxThreadNum = 0;
 
 private: // 세션관련 변수
 	unordered_map<DWORD64, SessionInfo*> mSessionData;
-	DWORD64 mSessionID_Num;
+	DWORD64 mSessionID_Num = 0;
 	
 
 private:

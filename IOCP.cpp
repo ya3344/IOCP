@@ -8,13 +8,11 @@ int main()
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 	timeBeginPeriod(1); // 타이머 해상도 높이기
     
-	LanServer* echoServer = nullptr;
-	echoServer = new EchoServer;
+	EchoServer echoServer;
 
-	if (echoServer->Start(L"127.0.0.1", 20000, 5, true, 5000) == false)	
+	if (echoServer.Start(L"127.0.0.1", 6000, 5, true, 5000) == false)	
 		return EXIT_FAILURE;
 
-	delete echoServer;
 	
 
 	timeEndPeriod(1);

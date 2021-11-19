@@ -40,5 +40,4 @@ using namespace std;
 #include "define.h"
 #include "Constant.h"
 #include "Macro.h"
-
 #endif //PCH_H
