@@ -13,7 +13,19 @@ int main()
 	if (echoServer.Start(L"127.0.0.1", 6000, 5, true, 5000) == false)	
 		return EXIT_FAILURE;
 
-	
+
+	while (true)
+	{
+		if (GetAsyncKeyState(VK_SPACE))
+		{
+			echoServer.Stop();
+			break;
+		}
+	}
+
+	WaitForMultipleObjects(echoServer.GetMaxThreadNum(), echoServer.GetThread(), TRUE, INFINITE);
+	delete[] echoServer.GetThread();
+
 
 	timeEndPeriod(1);
 	return EXIT_SUCCESS;

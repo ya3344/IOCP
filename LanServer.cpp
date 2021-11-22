@@ -121,32 +121,32 @@ bool LanServer::Start(const WCHAR* outServerIP, const WORD port, const DWORD wor
 		}
 	}
 
-	retVal = WaitForMultipleObjects(mMaxThreadNum, mThread, TRUE, INFINITE);
+	mExitEvent = CreateEvent(NULL, FALSE, TRUE, NULL);
+	if (mExitEvent == NULL)
+	{
+		printf("CreateEvent failed (%d)\n", GetLastError());
+		return false;
+	}
 
-	delete[] mThread;
-//#ifdef SINGLE_THREAD
-//	mThread[WORKER_THREAD_1] = (HANDLE)_beginthreadex(NULL, 0, &WorkerThread, this, 0, &mThreadID[WORKER_THREAD_1]);
-//#else
-//	mThread[WORKER_THREAD_1] = (HANDLE)_beginthreadex(NULL, 0, &WorkerThread, NULL, 0, &mThreadID[WORKER_THREAD_1]);
-//	mThread[WORKER_THREAD_2] = (HANDLE)_beginthreadex(NULL, 0, &WorkerThread, NULL, 0, &mThreadID[WORKER_THREAD_2]);
-//	mThread[WORKER_THREAD_3] = (HANDLE)_beginthreadex(NULL, 0, &WorkerThread, NULL, 0, &mThreadID[WORKER_THREAD_3]);
-//	mThread[WORKER_THREAD_4] = (HANDLE)_beginthreadex(NULL, 0, &WorkerThread, NULL, 0, &mThreadID[WORKER_THREAD_4]);
-//	mThread[WORKER_THREAD_5] = (HANDLE)_beginthreadex(NULL, 0, &WorkerThread, NULL, 0, &mThreadID[WORKER_THREAD_5]);
-//#endif
-//	mThread[ACCEPT_THREAD] = (HANDLE)_beginthreadex(NULL, 0, &AcceptThread, this, 0, &mThreadID[ACCEPT_THREAD]);
-//	
-//	for (int i = 0; i < THREAD_MAX; i++)
-//	{
-//		if (LanServer::mThread[i] == NULL)
-//		{
-//			CONSOLE_LOG(LOG_LEVEL_ERROR, L"thread[WORKER_THREAD_%d] NULL:%d ",i, WSAGetLastError());
-//			return false;
-//		}
-//	}
+	//WaitForMultipleObjects(mMaxThreadNum, mThread, TRUE, INFINITE);
 
-//	retVal = WaitForMultipleObjects(THREAD_MAX, mThread, TRUE, INFINITE);
+	//SafeDelete(mThread);
 
 	return true;
+}
+
+bool LanServer::Stop()
+{
+	// 쓰레드 종료하기 전에 모든 세션 데이터 Release 진행
+	for (auto iterSessionData : mSessionData)
+	{
+		Release(iterSessionData.second);
+	}
+	
+	mShutDown = true;
+	SetEvent(mExitEvent);
+
+	return false;
 }
 
 bool LanServer::SendPacket(const DWORD64 sessionID, PacketBuffer& packetBuffer)
@@ -192,6 +192,34 @@ bool LanServer::SendPacket(const DWORD64 sessionID, PacketBuffer& packetBuffer)
 	return true;
 }
 
+bool LanServer::Disconnect(const DWORD64 sessionID)
+{
+	SessionInfo* sessionInfo;
+
+	// 세션 데이터 삭제
+	auto iterSessionData = mSessionData.find(sessionID);
+	if (iterSessionData == mSessionData.end())
+	{
+		CONSOLE_LOG(LOG_LEVEL_ERROR, L"Disconnect session find error![sessionID:%d]", sessionID);
+		return false;
+	}
+	sessionInfo = iterSessionData->second;
+	_ASSERT(sessionInfo != nullptr);
+	AcquireSRWLockExclusive(&sessionInfo->srwLock);
+
+	closesocket(iterSessionData->second->clientSock);
+	SafeDelete(sessionInfo->recvRingBuffer);
+	SafeDelete(sessionInfo->sendRingBuffer);
+
+	mSessionData.erase(iterSessionData);
+	ReleaseSRWLockExclusive(&sessionInfo->srwLock);
+	SafeDelete(sessionInfo);
+
+	CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"Disconnect [SessionID:%d]", sessionID);
+
+	return true;
+}
+
 unsigned __stdcall LanServer::AcceptThread(void* arguments)
 {
 	return ((LanServer*)arguments)->AcceptThread_Working();
@@ -210,7 +238,9 @@ int LanServer::AcceptThread_Working()
 	SOCKADDR_IN clientaddr;
 	SessionInfo* sessionInfo = nullptr;
 
-	while (true)
+	//WaitForSingleObject(mExitEvent, INFINITE);
+
+	while (mShutDown == false)
 	{
 		addrlen = sizeof(clientaddr);
 		clientSock = accept(mListenSock, (SOCKADDR*)&clientaddr, &addrlen);
@@ -233,6 +263,9 @@ int LanServer::AcceptThread_Working()
 		RecvPost(sessionInfo);
 	}
 
+	CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"AcceptThread EXIT![ThreadID:%d]", GetCurrentThreadId());
+	SetEvent(mExitEvent); // 종료 직전에 이벤트 시그널 추가
+
 	return 0;
 }
 
@@ -243,7 +276,9 @@ int LanServer::WorkerThread_Working()
 	OVERLAPPED* overlapped = nullptr;
 	SessionInfo* sessionInfo = nullptr;
 
-	while (true)
+	//WaitForSingleObject(mExitEvent, INFINITE);
+
+	while (mShutDown == false)
 	{
 		transferredBytes = 0;
 		overlapped = nullptr;
@@ -259,7 +294,7 @@ int LanServer::WorkerThread_Working()
 		if (overlapped == nullptr && sessionInfo == nullptr && transferredBytes == 0)
 		{
 			//워커쓰레드 종료
-			CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"WorkerThread EXIT!");
+			CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"WorkerThread EXIT![ThreadID:%d]", GetCurrentThreadId());
 			return 0;
 		}
 
@@ -305,8 +340,8 @@ int LanServer::WorkerThread_Working()
 
 	}
 
-	
-	//	OnError(dfFLAG_ERROR, L"SendFlag Error");
+	CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"WorkerThread EXIT![ThreadID:%d]", GetCurrentThreadId());
+	SetEvent(mExitEvent); // 종료직전에 이벤트 시그널 추가
 
 	return 0;
 }
