@@ -27,7 +27,6 @@
 #include <random>
 #include <string.h>
 #include <process.h>
-#include <malloc.h>
 using namespace std;
 
 
@@ -42,5 +41,6 @@ using namespace std;
 #include "define.h"
 #include "Constant.h"
 #include "Macro.h"
+
 
 #endif //PCH_H

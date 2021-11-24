@@ -2,7 +2,7 @@
 
 #include "../Common\RingBuffer/RingBuffer.h"
 #include "../Common\PacketBuffer/PacketBuffer.h"
-
+#include "../Common\MemoryPool/MemoryPool.h"
 
 struct SessionInfo
 {
