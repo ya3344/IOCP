@@ -16,6 +16,9 @@
     <Filter Include="Network">
       <UniqueIdentifier>{b4be4495-5944-473c-a528-971224f85ed4}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Library">
+      <UniqueIdentifier>{ce67c20b-e946-4539-a267-5601fb55fb54}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="IOCP.cpp">
@@ -23,12 +26,6 @@
     </ClCompile>
     <ClCompile Include="pch.cpp">
       <Filter>소스 파일</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Common\RingBuffer\RingBuffer.cpp">
-      <Filter>Network</Filter>
-    </ClCompile>
-    <ClCompile Include="..\Common\PacketBuffer\PacketBuffer.cpp">
-      <Filter>Network</Filter>
     </ClCompile>
     <ClCompile Include="Constant.cpp">
       <Filter>소스 파일</Filter>
@@ -39,16 +36,16 @@
     <ClCompile Include="EchoServer.cpp">
       <Filter>Network</Filter>
     </ClCompile>
+    <ClCompile Include="..\Common\PacketBuffer\PacketBuffer.cpp">
+      <Filter>Library</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Common\RingBuffer\RingBuffer.cpp">
+      <Filter>Library</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h">
       <Filter>헤더 파일</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Common\RingBuffer\RingBuffer.h">
-      <Filter>Network</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Common\PacketBuffer\PacketBuffer.h">
-      <Filter>Network</Filter>
     </ClInclude>
     <ClInclude Include="define.h">
       <Filter>헤더 파일</Filter>
@@ -64,6 +61,15 @@
     </ClInclude>
     <ClInclude Include="EchoServer.h">
       <Filter>Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Common\RingBuffer\RingBuffer.h">
+      <Filter>Library</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Common\PacketBuffer\PacketBuffer.h">
+      <Filter>Library</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Common\MemoryPool\MemoryPool.h">
+      <Filter>Library</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

@@ -23,9 +23,8 @@ int main()
 		}
 	}
 
-	WaitForMultipleObjects(echoServer.GetMaxThreadNum(), echoServer.GetThread(), TRUE, INFINITE);
-	delete[] echoServer.GetThread();
-
+	WaitForMultipleObjects(echoServer.GetLanServer_MaxThreadNum(), echoServer.GetLanServer_Threads(), TRUE, INFINITE);
+	WaitForSingleObject(echoServer.Get_EchoThread(), INFINITE);
 
 	timeEndPeriod(1);
 	return EXIT_SUCCESS;

@@ -161,6 +161,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\Common\MemoryPool\MemoryPool.h" />
     <ClInclude Include="..\Common\PacketBuffer\PacketBuffer.h" />
     <ClInclude Include="..\Common\RingBuffer\RingBuffer.h" />
     <ClInclude Include="Constant.h" />

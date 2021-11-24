@@ -3,6 +3,7 @@
 #include "../Common\RingBuffer/RingBuffer.h"
 #include "../Common\PacketBuffer/PacketBuffer.h"
 
+
 struct SessionInfo
 {
 	SOCKET clientSock = INVALID_SOCKET;
@@ -13,9 +14,9 @@ struct SessionInfo
 	class RingBuffer* recvRingBuffer = nullptr;
 	OVERLAPPED recvOverlapped;
 	OVERLAPPED sendOverlapped;
-	SRWLOCK srwLock;
+	CRITICAL_SECTION csLock;
 	long ioCount = 0; // io count 함수
-	long sendFlag = false;
+	long sendFlag = FALSE;
 };
 
 #pragma pack(push, 1)   
@@ -50,8 +51,8 @@ public:
 	bool Disconnect(const DWORD64 sessionID);
 
 public:
-	DWORD GetMaxThreadNum() const { return mMaxThreadNum;  }
-	const HANDLE* GetThread() const { return mThread; }
+	DWORD GetLanServer_MaxThreadNum() const { return mMaxThreadNum;  }
+	const HANDLE* GetLanServer_Threads() const { return mThread; }
 
 private:
 	static unsigned __stdcall AcceptThread(void* arguments);
@@ -84,12 +85,12 @@ private: // 쓰레드 관련 변수
 	unsigned int mThreadID;
 	DWORD mMaxThreadNum = 0;
 	bool mShutDown = false;
-	HANDLE mExitEvent = nullptr;
 
 private: // 세션관련 변수
 	unordered_map<DWORD64, SessionInfo*> mSessionData;
 	DWORD64 mSessionID_Num = 0;
-	
+protected:
+	SRWLOCK mSessionDataLock;
 
 private:
 	DWORD mMaxUserNum = 0;

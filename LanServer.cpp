@@ -1,7 +1,6 @@
 #include "pch.h"
 #include "LanServer.h"
-
-
+#include "../Common/MemoryPool/MemoryPool.h"
 
 LanServer::~LanServer()
 {
@@ -12,6 +11,8 @@ LanServer::~LanServer()
 	{
 		CloseHandle(LanServer::mThread[i]);
 	}
+
+	delete[] mThread;
 }
 
 bool LanServer::Start(const WCHAR* outServerIP, const WORD port, const DWORD workThreadNum, const bool isNodelay, const DWORD maxUserNum)
@@ -121,17 +122,6 @@ bool LanServer::Start(const WCHAR* outServerIP, const WORD port, const DWORD wor
 		}
 	}
 
-	mExitEvent = CreateEvent(NULL, FALSE, TRUE, NULL);
-	if (mExitEvent == NULL)
-	{
-		printf("CreateEvent failed (%d)\n", GetLastError());
-		return false;
-	}
-
-	//WaitForMultipleObjects(mMaxThreadNum, mThread, TRUE, INFINITE);
-
-	//SafeDelete(mThread);
-
 	return true;
 }
 
@@ -144,7 +134,6 @@ bool LanServer::Stop()
 	}
 	
 	mShutDown = true;
-	SetEvent(mExitEvent);
 
 	return false;
 }
@@ -155,14 +144,19 @@ bool LanServer::SendPacket(const DWORD64 sessionID, PacketBuffer& packetBuffer)
 	HeaderInfo header;
 	int retVal;
 
+	AcquireSRWLockExclusive(&mSessionDataLock);
 	auto iterSessionData = mSessionData.find(sessionID);
+	ReleaseSRWLockExclusive(&mSessionDataLock);
+
 	if (iterSessionData == mSessionData.end())
 	{
 		CONSOLE_LOG(LOG_LEVEL_ERROR, L"SendPacket mSessionData find error![sessionID:%d]", sessionID);
 		return false;
 	}
+	
 	sessionInfo = iterSessionData->second;
 
+	EnterCriticalSection(&sessionInfo->csLock);
 	// header 담기
 	header.length = PACKET_SIZE;
 	retVal = sessionInfo->sendRingBuffer->Enqueue((char*)&header, sizeof(header));
@@ -184,11 +178,15 @@ bool LanServer::SendPacket(const DWORD64 sessionID, PacketBuffer& packetBuffer)
 			sessionInfo->sendRingBuffer->GetUseSize());
 	}
 
-	CONSOLE_LOG(LOG_LEVEL_DEBUG, L"[SessionID:%d] SendRingBuffer Enqueue Size:%d RingBuf useSize:%d",
+	CONSOLE_LOG(LOG_LEVEL_DEBUG, L"[SessionID:%d] PacketBuffer Size:%d SendRingBuffer useSize:%d",
 		sessionInfo->sessionID,
 		packetBuffer.GetDataSize(),
 		sessionInfo->sendRingBuffer->GetUseSize());
 
+	// Wsa Send 함수
+	SendProcess(sessionInfo);
+
+	LeaveCriticalSection(&sessionInfo->csLock);
 	return true;
 }
 
@@ -205,14 +203,16 @@ bool LanServer::Disconnect(const DWORD64 sessionID)
 	}
 	sessionInfo = iterSessionData->second;
 	_ASSERT(sessionInfo != nullptr);
-	AcquireSRWLockExclusive(&sessionInfo->srwLock);
+	
 
 	closesocket(iterSessionData->second->clientSock);
 	SafeDelete(sessionInfo->recvRingBuffer);
 	SafeDelete(sessionInfo->sendRingBuffer);
 
+	AcquireSRWLockExclusive(&mSessionDataLock);
 	mSessionData.erase(iterSessionData);
-	ReleaseSRWLockExclusive(&sessionInfo->srwLock);
+	ReleaseSRWLockExclusive(&mSessionDataLock);
+
 	SafeDelete(sessionInfo);
 
 	CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"Disconnect [SessionID:%d]", sessionID);
@@ -238,8 +238,6 @@ int LanServer::AcceptThread_Working()
 	SOCKADDR_IN clientaddr;
 	SessionInfo* sessionInfo = nullptr;
 
-	//WaitForSingleObject(mExitEvent, INFINITE);
-
 	while (mShutDown == false)
 	{
 		addrlen = sizeof(clientaddr);
@@ -264,7 +262,6 @@ int LanServer::AcceptThread_Working()
 	}
 
 	CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"AcceptThread EXIT![ThreadID:%d]", GetCurrentThreadId());
-	SetEvent(mExitEvent); // 종료 직전에 이벤트 시그널 추가
 
 	return 0;
 }
@@ -275,8 +272,6 @@ int LanServer::WorkerThread_Working()
 	DWORD transferredBytes = 0;
 	OVERLAPPED* overlapped = nullptr;
 	SessionInfo* sessionInfo = nullptr;
-
-	//WaitForSingleObject(mExitEvent, INFINITE);
 
 	while (mShutDown == false)
 	{
@@ -297,8 +292,14 @@ int LanServer::WorkerThread_Working()
 			CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"WorkerThread EXIT![ThreadID:%d]", GetCurrentThreadId());
 			return 0;
 		}
-
+	
 		_ASSERT(sessionInfo != nullptr);
+
+		// 세션 락
+		EnterCriticalSection(&sessionInfo->csLock);
+
+		CONSOLE_LOG(LOG_LEVEL_DEBUG, L"Lock Start![SesssionID:%d]", sessionInfo->sessionID);
+
 		if (transferredBytes == 0)
 		{
 			//연결종료
@@ -311,18 +312,20 @@ int LanServer::WorkerThread_Working()
 			// recvProcess 링버퍼로 담은 부분 보내기 처리 진행.
 			RecvProcess(sessionInfo);
 
+			// 비동기 Send 시작 OnRecv 함수에서 SendRingBuffer 진행
+			//SendProcess(sessionInfo);
+
 			// 비동기 Recv 시작
 			RecvPost(sessionInfo);
 
-			// 비동기 Send 시작 OnRecv 함수에서 SendRingBuffer 진행
-			SendProcess(sessionInfo);
+		
 		}
 		else if (overlapped == &(sessionInfo->sendOverlapped))
 		{
 			sessionInfo->sendRingBuffer->MoveReadPos(transferredBytes);
 			CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"WSA Send Clear[%d Bytes]", transferredBytes);
 
-			CONSOLE_LOG(LOG_LEVEL_WARNING, L"SendRingBuffer UseSize:%d  WirtePos:%d  ReadPos:%d",
+			CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"SendRingBuffer UseSize:%d  WirtePos:%d  ReadPos:%d",
 				sessionInfo->sendRingBuffer->GetUseSize(), sessionInfo->sendRingBuffer->GetWriteSize(),
 				sessionInfo->sendRingBuffer->GetReadSize());
 
@@ -337,11 +340,11 @@ int LanServer::WorkerThread_Working()
 		{
 			Release(sessionInfo);
 		}
-
+		CONSOLE_LOG(LOG_LEVEL_DEBUG, L"Lock End![SesssionID:%d]", sessionInfo->sessionID);
+		LeaveCriticalSection(&sessionInfo->csLock);
 	}
 
 	CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"WorkerThread EXIT![ThreadID:%d]", GetCurrentThreadId());
-	SetEvent(mExitEvent); // 종료직전에 이벤트 시그널 추가
 
 	return 0;
 }
@@ -362,11 +365,11 @@ SessionInfo* LanServer::AddSessionInfo(const SOCKET clientSock, SOCKADDR_IN& cli
 	sessionInfo->recvRingBuffer = new RingBuffer;
 	sessionInfo->sendRingBuffer = new RingBuffer;
 	// 락 초기화
-	InitializeSRWLock(&sessionInfo->srwLock);
+	InitializeCriticalSection(&sessionInfo->csLock);
 
-	AcquireSRWLockExclusive(&sessionInfo->srwLock);
+	AcquireSRWLockExclusive(&mSessionDataLock);
 	mSessionData.emplace(sessionInfo->sessionID, sessionInfo);
-	ReleaseSRWLockExclusive(&sessionInfo->srwLock);
+	ReleaseSRWLockExclusive(&mSessionDataLock);
 
 	CONSOLE_LOG(LOG_LEVEL_DEBUG, L"[sessionID:%d] session insert size:%d", sessionInfo->sessionID, (int)mSessionData.size());
 
@@ -377,7 +380,8 @@ void LanServer::SendProcess(SessionInfo* sessionInfo)
 {
 	// 완료통지가 오면 보내는 1:1 구조로 보내기 위해 sendFlag로 체크
 	// 비동기 Send 시작 
-	if (InterlockedCompareExchange((LONG*)&sessionInfo->sendFlag, TRUE, FALSE) == FALSE)
+	CONSOLE_LOG(LOG_LEVEL_DEBUG, L"SendPost Call SendFalg:%d", sessionInfo->sendFlag);
+	if (InterlockedCompareExchange(&sessionInfo->sendFlag, TRUE, FALSE) == FALSE)
 	{
 		if(SendPost(sessionInfo) == FALSE)
 			sessionInfo->sendFlag = FALSE;
@@ -399,7 +403,7 @@ bool LanServer::SendPost(SessionInfo* sessionInfo)
 	CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"SEND:%s size:%d", (WCHAR*)sessionInfo->sendRingBuffer->GetBufferPtr(),
 		sessionInfo->sendRingBuffer->GetUseSize());
 
-	CONSOLE_LOG(LOG_LEVEL_WARNING, L"SendRingBuffer UseSize:%d", sessionInfo->sendRingBuffer->GetUseSize());
+	CONSOLE_LOG(LOG_LEVEL_DEBUG, L"SendRingBuffer UseSize:%d", sessionInfo->sendRingBuffer->GetUseSize());
 	// 비동기 입출력 시작
 	wsaBuffer.buf = sessionInfo->sendRingBuffer->GetBufferPtr();
 	wsaBuffer.len = sessionInfo->sendRingBuffer->GetUseSize();
@@ -516,7 +520,7 @@ void LanServer::RecvProcess(SessionInfo* sessionInfo)
 		}
 		CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"RECV:%s Size:%d", (WCHAR*)packetBuffer.GetBufferPtr(), retVal);
 
-		CONSOLE_LOG(LOG_LEVEL_WARNING, L"[sessionID:%d] RecvRingBuf WriteSize:%d ReadSize:%d",
+		CONSOLE_LOG(LOG_LEVEL_DEBUG, L"[sessionID:%d] RecvRingBuf WriteSize:%d ReadSize:%d",
 			sessionInfo->sessionID,
 			sessionInfo->recvRingBuffer->GetWriteSize(),
 			sessionInfo->recvRingBuffer->GetReadSize());
@@ -532,8 +536,10 @@ void LanServer::Release(SessionInfo* sessionInfo)
 	DWORD64 sessionID = sessionInfo->sessionID;
 
 	// 세션 데이터 삭제
-	AcquireSRWLockExclusive(&sessionInfo->srwLock);
+	AcquireSRWLockExclusive(&mSessionDataLock);
 	auto iterSessionData = mSessionData.find(sessionID);
+	ReleaseSRWLockExclusive(&mSessionDataLock);
+
 	if (iterSessionData == mSessionData.end())
 	{
 		CONSOLE_LOG(LOG_LEVEL_ERROR, L"Release session find error![sessionID:%d]", sessionID);
@@ -542,10 +548,17 @@ void LanServer::Release(SessionInfo* sessionInfo)
 	closesocket(iterSessionData->second->clientSock);
 	SafeDelete(sessionInfo->recvRingBuffer);
 	SafeDelete(sessionInfo->sendRingBuffer);
-
-	mSessionData.erase(iterSessionData);
-	ReleaseSRWLockExclusive(&sessionInfo->srwLock);
+	DeleteCriticalSection(&sessionInfo->csLock);
 	SafeDelete(sessionInfo);
 
+	AcquireSRWLockExclusive(&mSessionDataLock);
+	mSessionData.erase(iterSessionData);
+	ReleaseSRWLockExclusive(&mSessionDataLock);
+
 	CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"Release [SessionID:%d]", sessionID);
+
+	
+	
+
+	
 }
