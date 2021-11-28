@@ -29,14 +29,36 @@ inline void SafeFree(T& obj)
 	}
 }
 
-inline short CalDistance(const short srcX, const short srcY, const short destX, const short destY)
+inline void Crash()
 {
-	short x = destX - srcX;
-	short y = destY - srcY;
-	short distance = (short)(sqrt((x * x) + (y * y)));
-
-	return distance;
+	int* p = nullptr;
+	*p = 0;
 }
+
+#define DECLARE_SINGLETON(ClassName)			\
+public:											\
+	static ClassName* GetInstance()				\
+	{											\
+		if (m_pInstance == nullptr)				\
+			m_pInstance = new ClassName;		\
+												\
+		return m_pInstance;						\
+	}											\
+												\
+	void DestroyInstance()						\
+	{											\
+		if (m_pInstance)						\
+		{										\
+			delete m_pInstance;					\
+			m_pInstance = nullptr;				\
+		}										\
+	}											\
+												\
+private:										\
+	static ClassName* m_pInstance;				\
+
+#define IMPLEMENT_SINGLETON(ClassName)			\
+ClassName* ClassName::m_pInstance = nullptr;
 
 #define CONSOLE_LOG(logLevel, fmt, ...)							\
 do {															\

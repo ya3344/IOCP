@@ -191,14 +191,15 @@ bool LanServer::SendPacket(const DWORD64 sessionID, PacketBuffer* packetBuffer)
 	//동적할당된 packetBuffer 를 그대로 링버퍼에 전달한다.
 	retVal = sessionInfo->sendRingBuffer->Enqueue((char*)&packetBuffer, PACKET_SIZE);
 
-	if (retVal < packetBuffer->GetDataSize())
+	if (retVal != PACKET_SIZE)
 	{
+		Crash();
 		CONSOLE_LOG(LOG_LEVEL_ERROR, L"[SessionID:%d] Enqueue packetBuffer Error[%d] RingBuf useSize:%d",
 			sessionInfo->sessionID,
 			retVal,
 			sessionInfo->sendRingBuffer->GetUseSize());
 		return false;
-	}
+	};
 
 	CONSOLE_LOG(LOG_LEVEL_DEBUG, L"[SessionID:%d] PacketBuffer Size:%d SendRingBuffer useSize:%d",
 		sessionInfo->sessionID,
@@ -356,7 +357,9 @@ int LanServer::WorkerThread_Working()
 			RecvProcess(sessionInfo);
 
 			// sendPacket 를 통해 링버퍼에 담은 부분 모두 보내기 진행
+			EnterCriticalSection(&sessionInfo->sendLock); // 보내기 받기가 동시에 진행되기 때문에 락 진행
 			SendProcess(sessionInfo);
+			LeaveCriticalSection(&sessionInfo->sendLock);
 
 			// 비동기 Recv 시작
 			RecvPost(sessionInfo);
@@ -380,11 +383,19 @@ int LanServer::WorkerThread_Working()
 				sessionInfo->sendRingBuffer->GetUseSize(), sessionInfo->sendRingBuffer->GetWriteSize(),
 				sessionInfo->sendRingBuffer->GetReadSize());
 
+		/*	gLog.WriteLog(L"SendRingBuffer", SystemLog::LOG_LEVEL_DISPLAY, TEXT(__FUNCTION__), L"WSA Send Clear[%d Bytes]", transferredBytes);
+
+			gLog.WriteLog(L"SendRingBuffer", SystemLog::LOG_LEVEL_DISPLAY, TEXT(__FUNCTION__), L"SendRingBuffer UseSize:%d  WirtePos:%d  ReadPos:%d",
+				sessionInfo->sendRingBuffer->GetUseSize(), sessionInfo->sendRingBuffer->GetWriteSize(),
+				sessionInfo->sendRingBuffer->GetReadSize());*/
+
 			// 완료 통지가 왔기 때문에 sendFlag 값 초기화
 			sessionInfo->sendFlag = false;
 
 			// 비동기 Send 시작 OnRecv 함수에서 SendRingBuffer 진행
+			EnterCriticalSection(&sessionInfo->sendLock); // 보내기 받기가 동시에 진행되기 때문에 락 진행
 			SendProcess(sessionInfo);
+			LeaveCriticalSection(&sessionInfo->sendLock);
 		}
 		// 입출력 통보가 왔으므로 IO Count 감소
 		if (InterlockedDecrement(&sessionInfo->ioCount) == 0) // IO 가 0이므로 종료되었다고 판단하여 모두 삭제 진행
@@ -434,7 +445,7 @@ SessionInfo* LanServer::AddSessionInfo(const SOCKET clientSock, SOCKADDR_IN& cli
 	sessionInfo->sendRingBuffer = new RingBuffer;
 
 	// 락 초기화
-	//InitializeCriticalSection(&sessionInfo->csLock);
+	InitializeCriticalSection(&sessionInfo->sendLock);
 
 	//AcquireSRWLockExclusive(&mSessionDataLock);
 	/*mSessionData.emplace(sessionInfo->sessionID, sessionInfo);*/
@@ -650,7 +661,7 @@ void LanServer::Release(SessionInfo* sessionInfo)
 	closesocket(sessionInfo->clientSock);
 	SafeDelete(sessionInfo->recvRingBuffer);
 	SafeDelete(sessionInfo->sendRingBuffer);
-	//DeleteCriticalSection(&sessionInfo->csLock);
+	DeleteCriticalSection(&sessionInfo->sendLock);
 	SafeDelete(sessionInfo);
 
 	//AcquireSRWLockExclusive(&mSessionDataLock);

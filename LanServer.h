@@ -14,7 +14,7 @@ struct SessionInfo
 	class RingBuffer* recvRingBuffer = nullptr;
 	OVERLAPPED recvOverlapped;
 	OVERLAPPED sendOverlapped;
-	//CRITICAL_SECTION csLock;
+	CRITICAL_SECTION sendLock;
 	long ioCount = 0; // io count ÇÔ¼ö
 	long sendFlag = FALSE;
 };

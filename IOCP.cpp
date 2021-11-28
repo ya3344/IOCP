@@ -10,10 +10,11 @@ int main()
     
 	EchoServer echoServer;
 
-	if (echoServer.Start(L"127.0.0.1", 6000, 5, true, 50000) == false)	
+	//SystemLog log;
+	if (echoServer.Start(L"127.0.0.1", 6000, 5, true, 50000) == false)
 		return EXIT_FAILURE;
 
-
+	
 	while (true)
 	{
 		if (GetAsyncKeyState(VK_SPACE))

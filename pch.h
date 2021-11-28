@@ -28,6 +28,12 @@
 #include <string.h>
 #include <process.h>
 #include <stack>
+#include <sstream>
+#include <Windows.h>
+#include <time.h>
+#include <stdlib.h>
+#include <strsafe.h>
+#include <stdio.h>
 using namespace std;
 
 
@@ -40,6 +46,7 @@ using namespace std;
 #pragma comment(lib, "winmm.lib") 
 
 #include "define.h"
+#include "SystemLog.h"
 #include "Constant.h"
 #include "Macro.h"
 
