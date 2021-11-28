@@ -30,9 +30,6 @@
     <ClCompile Include="Constant.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
-    <ClCompile Include="LanServer.cpp">
-      <Filter>Network</Filter>
-    </ClCompile>
     <ClCompile Include="EchoServer.cpp">
       <Filter>Network</Filter>
     </ClCompile>
@@ -41,6 +38,9 @@
     </ClCompile>
     <ClCompile Include="..\Common\RingBuffer\RingBuffer.cpp">
       <Filter>Library</Filter>
+    </ClCompile>
+    <ClCompile Include="LanServer.cpp">
+      <Filter>Network</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -66,9 +66,6 @@
       <Filter>Library</Filter>
     </ClInclude>
     <ClInclude Include="..\Common\PacketBuffer\PacketBuffer.h">
-      <Filter>Library</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Common\MemoryPool\MemoryPool.h">
       <Filter>Library</Filter>
     </ClInclude>
   </ItemGroup>

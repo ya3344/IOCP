@@ -10,6 +10,16 @@ inline void SafeDelete(T& obj)
 }
 
 template <typename T>
+inline void SafeArrayDelete(T& obj)
+{
+	if (obj)
+	{
+		delete[] obj;
+		obj = nullptr;
+	}
+}
+
+template <typename T>
 inline void SafeFree(T& obj)
 {
 	if (obj)

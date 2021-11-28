@@ -3,7 +3,7 @@
 
 EchoServer::EchoServer()
 {
-	mThread = (HANDLE)_beginthreadex(NULL, 0, &WorkerThread, this, 0, &mThreadID);
+	/*mThread = (HANDLE)_beginthreadex(NULL, 0, &WorkerThread, this, 0, &mThreadID);
 	_ASSERT(mThread != NULL);
 	InitializeSRWLock(&mSendBufferLock);
 
@@ -11,13 +11,14 @@ EchoServer::EchoServer()
 	_ASSERT(mWorkThreadEvent != NULL);
 
 	mSendBuffer = new RingBuffer(100000);
-	_ASSERT(mSendBuffer != NULL);
+	_ASSERT(mSendBuffer != NULL);*/
 	//mSendBuffer->Init
 }
 
 EchoServer::~EchoServer()
 {
 	CloseHandle(mThread);
+	SafeDelete(mSendBuffer);
 }
 
 unsigned __stdcall EchoServer::WorkerThread(void* arguments)
@@ -78,7 +79,7 @@ int EchoServer::WorkerThread_Working()
 				sendPacketBuffer.GetBufferPtr(), mSendBuffer->GetWriteSize(), mSendBuffer->GetReadSize());
 			ReleaseSRWLockExclusive(&mSendBufferLock);
 
-			SendPacket(sessionID, sendPacketBuffer);
+		//	SendPacket(sessionID, sendPacketBuffer);
 		}
 	
 	}
@@ -96,9 +97,23 @@ void EchoServer::OnClientLeave(const DWORD64 sessionID)
 
 void EchoServer::OnRecv(const DWORD64 sessionID, PacketBuffer& packetBuffer)
 {
-	AcquireSRWLockExclusive(&mSendBufferLock);	
-	mSendBuffer->Enqueue((char*)&sessionID, sizeof(sessionID));
-	mSendBuffer->Enqueue(packetBuffer.GetBufferPtr(), PACKET_SIZE);
-	SetEvent(mWorkThreadEvent);
-	ReleaseSRWLockExclusive(&mSendBufferLock);
+	HeaderInfo header;
+	//AcquireSRWLockExclusive(&mSendBufferLock);	
+//mSendBuffer->Enqueue((char*)&sessionID, sizeof(sessionID));
+//mSendBuffer->Enqueue(packetBuffer.GetBufferPtr(), PACKET_SIZE);
+//SetEvent(mWorkThreadEvent);
+//	ReleaseSRWLockExclusive(&mSendBufferLock);
+
+	char echoData[PACKET_SIZE];
+	PacketBuffer* sendPacketBuffer = nullptr;
+	sendPacketBuffer = new PacketBuffer(PacketBuffer::BUFFER_SIZE_DEFAULT);
+
+	// 지역변수에 받아온 데이터 저장
+	header.length = 8;
+	sendPacketBuffer->PutData((char*)&header, sizeof(header));
+	packetBuffer.GetData(echoData, PACKET_SIZE);
+	sendPacketBuffer->PutData(echoData, PACKET_SIZE);
+
+	// SendPacket
+	SendPacket(sessionID, sendPacketBuffer);
 }

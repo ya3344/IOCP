@@ -27,6 +27,7 @@
 #include <random>
 #include <string.h>
 #include <process.h>
+#include <stack>
 using namespace std;
 
 

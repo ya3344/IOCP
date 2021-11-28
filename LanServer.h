@@ -2,19 +2,19 @@
 
 #include "../Common\RingBuffer/RingBuffer.h"
 #include "../Common\PacketBuffer/PacketBuffer.h"
-#include "../Common\MemoryPool/MemoryPool.h"
+//#include "MemoryPool.h"
 
 struct SessionInfo
 {
 	SOCKET clientSock = INVALID_SOCKET;
-	WCHAR ip[IP_BUFFER_SIZE] = { 0, };
+	WCHAR ip[IP_BUFFER_SIZE] = { 0 };
 	WORD port = 0;
 	DWORD64 sessionID = 0;
 	class RingBuffer* sendRingBuffer = nullptr;
 	class RingBuffer* recvRingBuffer = nullptr;
 	OVERLAPPED recvOverlapped;
 	OVERLAPPED sendOverlapped;
-	CRITICAL_SECTION csLock;
+	//CRITICAL_SECTION csLock;
 	long ioCount = 0; // io count 함수
 	long sendFlag = FALSE;
 };
@@ -41,14 +41,18 @@ public:
 	enum PACKET_INDEX
 	{
 		PACKET_SIZE = 8,
+		MAX_SESSION_DATA = 500,
+		SESSION_ARRAY_INDEX_MASK = 65535,
+		PACKET_MAX_BUFFER_SIZE = 500,
 	};
 
 public:
 	bool Start(const WCHAR* outServerIP, const WORD port, 
 		const DWORD workThreadNum, const bool isNodelay, const DWORD maxUserNum);
 	bool Stop();
-	bool SendPacket(const DWORD64 sessionID, PacketBuffer& packetBuffer);
+	bool SendPacket(const DWORD64 sessionID, PacketBuffer* packetBuffer);
 	bool Disconnect(const DWORD64 sessionID);
+	
 
 public:
 	DWORD GetLanServer_MaxThreadNum() const { return mMaxThreadNum;  }
@@ -77,22 +81,29 @@ protected: // 실제 컨테츠 부에서 실행 할 가상함수
 	virtual void OnRecv(const DWORD64 sessionID, PacketBuffer& packetBuffer) PURE; // 패킷 수신 완료 후
 
 private: // 소켓 관련 변수
-	SOCKET mListenSock;
-	HANDLE mHcp;
+	SOCKET mListenSock = INVALID_SOCKET;
+	HANDLE mHcp = nullptr;
 
 private: // 쓰레드 관련 변수
-	HANDLE* mThread;
-	unsigned int mThreadID;
+	HANDLE* mThread = nullptr;
+	unsigned int mThreadID = 0;
 	DWORD mMaxThreadNum = 0;
 	bool mShutDown = false;
 
 private: // 세션관련 변수
 	unordered_map<DWORD64, SessionInfo*> mSessionData;
 	DWORD64 mSessionID_Num = 0;
+	SessionInfo* mSessionArray[MAX_SESSION_DATA] = { 0 };
+	stack<DWORD> mSessionIndexData;
+	DWORD mUserCount = 0;
+	int mPacketBufferNum = 0;
+
 protected:
-	SRWLOCK mSessionDataLock;
+	//SRWLOCK mSessionDataLock;
 
 private:
 	DWORD mMaxUserNum = 0;
+
+
 };
 
