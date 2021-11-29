@@ -19,6 +19,9 @@
     <Filter Include="Library">
       <UniqueIdentifier>{ce67c20b-e946-4539-a267-5601fb55fb54}</UniqueIdentifier>
     </Filter>
+    <Filter Include="SystemLibrary">
+      <UniqueIdentifier>{8b7fd81f-3c57-4740-ac47-bdd96defa292}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="IOCP.cpp">
@@ -43,7 +46,10 @@
       <Filter>Network</Filter>
     </ClCompile>
     <ClCompile Include="SystemLog.cpp">
-      <Filter>Library</Filter>
+      <Filter>SystemLibrary</Filter>
+    </ClCompile>
+    <ClCompile Include="CrashDump.cpp">
+      <Filter>SystemLibrary</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -72,7 +78,10 @@
       <Filter>Library</Filter>
     </ClInclude>
     <ClInclude Include="SystemLog.h">
-      <Filter>Library</Filter>
+      <Filter>SystemLibrary</Filter>
+    </ClInclude>
+    <ClInclude Include="CrashDump.h">
+      <Filter>SystemLibrary</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

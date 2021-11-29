@@ -150,6 +150,7 @@
     <ClCompile Include="..\Common\PacketBuffer\PacketBuffer.cpp" />
     <ClCompile Include="..\Common\RingBuffer\RingBuffer.cpp" />
     <ClCompile Include="Constant.cpp" />
+    <ClCompile Include="CrashDump.cpp" />
     <ClCompile Include="EchoServer.cpp" />
     <ClCompile Include="IOCP.cpp" />
     <ClCompile Include="LanServer.cpp" />
@@ -165,6 +166,7 @@
     <ClInclude Include="..\Common\PacketBuffer\PacketBuffer.h" />
     <ClInclude Include="..\Common\RingBuffer\RingBuffer.h" />
     <ClInclude Include="Constant.h" />
+    <ClInclude Include="CrashDump.h" />
     <ClInclude Include="define.h" />
     <ClInclude Include="EchoServer.h" />
     <ClInclude Include="LanServer.h" />

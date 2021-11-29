@@ -34,6 +34,10 @@
 #include <stdlib.h>
 #include <strsafe.h>
 #include <stdio.h>
+#include <Psapi.h>
+//#include <minidumpapiset.h>
+#include <DbgHelp.h>
+#pragma comment(lib, "Dbghelp.lib")
 using namespace std;
 
 
@@ -47,8 +51,10 @@ using namespace std;
 
 #include "define.h"
 #include "SystemLog.h"
+#include "CrashDump.h"
 #include "Constant.h"
 #include "Macro.h"
+
 
 
 #endif //PCH_H
