@@ -17,6 +17,7 @@ struct SessionInfo
 	CRITICAL_SECTION sendLock;
 	long ioCount = 0; // io count 함수
 	long sendFlag = FALSE;
+	int packetBufferNum = 0;
 };
 
 #pragma pack(push, 1)   
@@ -96,7 +97,7 @@ private: // 세션관련 변수
 	SessionInfo* mSessionArray[MAX_SESSION_DATA] = { 0 };
 	stack<DWORD> mSessionIndexData;
 	DWORD mUserCount = 0;
-	int mPacketBufferNum = 0;
+	
 
 protected:
 	//SRWLOCK mSessionDataLock;

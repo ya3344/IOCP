@@ -91,7 +91,7 @@ bool LanServer::Start(const WCHAR* outServerIP, const WORD port, const DWORD wor
 	CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"server open\n");
 
 	// IOCP handle 초기화
-	mHcp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, THREAD_MAX);
+	mHcp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, workThreadNum);
 	if (mHcp == NULL)
 	{
 		CONSOLE_LOG(LOG_LEVEL_ERROR, L"Hcp NULL:%d ", WSAGetLastError());
@@ -156,7 +156,7 @@ bool LanServer::SendPacket(const DWORD64 sessionID, PacketBuffer* packetBuffer)
 	sessionArrayIndex = sessionID & SESSION_ARRAY_INDEX_MASK;
 	//ReleaseSRWLockExclusive(&mSessionDataLock);
 
-	if (sessionArrayIndex < 0 || sessionArrayIndex >= SESSION_ARRAY_INDEX_MASK)
+	if (sessionArrayIndex < 0 || sessionArrayIndex >= MAX_SESSION_DATA)
 	{
 		CONSOLE_LOG(LOG_LEVEL_ERROR, L"Session Array Index OverFlow![sessionID:%d][index:%d]",
 			sessionID, sessionArrayIndex);
@@ -189,8 +189,9 @@ bool LanServer::SendPacket(const DWORD64 sessionID, PacketBuffer* packetBuffer)
 	//		sessionInfo->sendRingBuffer->GetUseSize());
 	//}
 	//동적할당된 packetBuffer 를 그대로 링버퍼에 전달한다.
+	EnterCriticalSection(&sessionInfo->sendLock);// 완료통지 부분에 디큐 진행으로 락 진행
 	retVal = sessionInfo->sendRingBuffer->Enqueue((char*)&packetBuffer, PACKET_SIZE);
-
+	LeaveCriticalSection(&sessionInfo->sendLock);
 	if (retVal != PACKET_SIZE)
 	{
 		Crash();
@@ -357,20 +358,22 @@ int LanServer::WorkerThread_Working()
 			RecvProcess(sessionInfo);
 
 			// sendPacket 를 통해 링버퍼에 담은 부분 모두 보내기 진행
-			EnterCriticalSection(&sessionInfo->sendLock); // 보내기 받기가 동시에 진행되기 때문에 락 진행
+		//	EnterCriticalSection(&sessionInfo->sendLock); // 보내기 받기가 동시에 진행되기 때문에 락 진행
 			SendProcess(sessionInfo);
-			LeaveCriticalSection(&sessionInfo->sendLock);
+		//	LeaveCriticalSection(&sessionInfo->sendLock);
 
 			// 비동기 Recv 시작
 			RecvPost(sessionInfo);
 		}
 		else if (overlapped == &(sessionInfo->sendOverlapped))
 		{
-			for (int i = 0; i < mPacketBufferNum; i++)
+			EnterCriticalSection(&sessionInfo->sendLock);
+			for (int i = 0; i < sessionInfo->packetBufferNum; i++)
 			{
 				sessionInfo->sendRingBuffer->Dequeue((char*)&packetBuffer, PACKET_SIZE);
 				SafeDelete(packetBuffer);
 			}
+			LeaveCriticalSection(&sessionInfo->sendLock);
 			/*if (mPacketBufferNum * PACKET_SIZE != transferredBytes)
 			{
 				CONSOLE_LOG(LOG_LEVEL_ERROR, L"PacketBufferNum Error![BuffferNum:%d][transferByte:%d]", mPacketBufferNum, transferredBytes);
@@ -393,9 +396,9 @@ int LanServer::WorkerThread_Working()
 			sessionInfo->sendFlag = false;
 
 			// 비동기 Send 시작 OnRecv 함수에서 SendRingBuffer 진행
-			EnterCriticalSection(&sessionInfo->sendLock); // 보내기 받기가 동시에 진행되기 때문에 락 진행
+			//EnterCriticalSection(&sessionInfo->sendLock); // 보내기 받기가 동시에 진행되기 때문에 락 진행
 			SendProcess(sessionInfo);
-			LeaveCriticalSection(&sessionInfo->sendLock);
+			//LeaveCriticalSection(&sessionInfo->sendLock);
 		}
 		// 입출력 통보가 왔으므로 IO Count 감소
 		if (InterlockedDecrement(&sessionInfo->ioCount) == 0) // IO 가 0이므로 종료되었다고 판단하여 모두 삭제 진행
@@ -463,7 +466,7 @@ void LanServer::SendProcess(SessionInfo* sessionInfo)
 {
 	// 완료통지가 오면 보내는 1:1 구조로 보내기 위해 sendFlag로 체크
 	// 비동기 Send 시작 
-	CONSOLE_LOG(LOG_LEVEL_DEBUG, L"SendPost Call SendFalg:%d", sessionInfo->sendFlag);
+	CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"SendPost Call [SendFalg:%d][sessionID:%d]", sessionInfo->sendFlag, sessionInfo->sessionID);
 	if (InterlockedCompareExchange(&sessionInfo->sendFlag, TRUE, FALSE) == FALSE)
 	{
 		if(SendPost(sessionInfo) == FALSE)
@@ -485,14 +488,14 @@ bool LanServer::SendPost(SessionInfo* sessionInfo)
 	}
 
 	retVal = sessionInfo->sendRingBuffer->Peek((char*)packeBuffer, sessionInfo->sendRingBuffer->GetUseSize());
-	mPacketBufferNum = retVal / PACKET_SIZE;
+	sessionInfo->packetBufferNum = retVal / PACKET_SIZE;
 
-	if (mPacketBufferNum <= 0)
+	if (sessionInfo->packetBufferNum <= 0)
 	{
 		CONSOLE_LOG(LOG_LEVEL_ERROR, L"mPacketBufferNum error [returnVal:%d]", retVal);
 		return false;
 	}
-	for (int i = 0; i < mPacketBufferNum; i++)
+	for (int i = 0; i < sessionInfo->packetBufferNum; i++)
 	{
 		wsaBuffer[i].buf = packeBuffer[i]->GetBufferPtr();
 		wsaBuffer[i].len = packeBuffer[i]->GetDataSize();
@@ -510,7 +513,7 @@ bool LanServer::SendPost(SessionInfo* sessionInfo)
 	ZeroMemory(&sessionInfo->sendOverlapped, sizeof(sessionInfo->sendOverlapped));
 	// IOCount 증가
 	InterlockedIncrement(&sessionInfo->ioCount);
-	retVal = WSASend(sessionInfo->clientSock, wsaBuffer, mPacketBufferNum,
+	retVal = WSASend(sessionInfo->clientSock, wsaBuffer, sessionInfo->packetBufferNum,
 		NULL, flags, &sessionInfo->sendOverlapped, NULL);
 	if (retVal == SOCKET_ERROR)
 	{

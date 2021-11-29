@@ -49,7 +49,7 @@ int EchoServer::WorkerThread_Working()
 				ReleaseSRWLockExclusive(&mSendBufferLock);
 				return 0;
 			}
-			CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"sessionID %d", sessionID);
+			//CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"sessionID %d", sessionID);
 			mSendBuffer->MoveReadPos(retVal);
 
 			sendPacketBuffer.Clear();
@@ -75,9 +75,9 @@ int EchoServer::WorkerThread_Working()
 				return 0;
 			}
 
-			CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"sendBuffer:%s  WriteSize:%d  ReadSize:%d",
+			/*CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"sendBuffer:%s  WriteSize:%d  ReadSize:%d",
 				sendPacketBuffer.GetBufferPtr(), mSendBuffer->GetWriteSize(), mSendBuffer->GetReadSize());
-			ReleaseSRWLockExclusive(&mSendBufferLock);
+			ReleaseSRWLockExclusive(&mSendBufferLock);*/
 
 		//	SendPacket(sessionID, sendPacketBuffer);
 		}
