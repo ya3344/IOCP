@@ -189,9 +189,9 @@ bool LanServer::SendPacket(const DWORD64 sessionID, PacketBuffer* packetBuffer)
 	//		sessionInfo->sendRingBuffer->GetUseSize());
 	//}
 	//동적할당된 packetBuffer 를 그대로 링버퍼에 전달한다.
-	EnterCriticalSection(&sessionInfo->sendLock);// 완료통지 부분에 디큐 진행으로 락 진행
+	//EnterCriticalSection(&sessionInfo->sendLock);// 완료통지 부분에 디큐 진행으로 락 진행
 	retVal = sessionInfo->sendRingBuffer->Enqueue((char*)&packetBuffer, PACKET_SIZE);
-	LeaveCriticalSection(&sessionInfo->sendLock);
+	//LeaveCriticalSection(&sessionInfo->sendLock);
 	if (retVal != PACKET_SIZE)
 	{
 		Crash();
@@ -367,13 +367,13 @@ int LanServer::WorkerThread_Working()
 		}
 		else if (overlapped == &(sessionInfo->sendOverlapped))
 		{
-			EnterCriticalSection(&sessionInfo->sendLock);
+			//EnterCriticalSection(&sessionInfo->sendLock);
 			for (int i = 0; i < sessionInfo->packetBufferNum; i++)
 			{
 				sessionInfo->sendRingBuffer->Dequeue((char*)&packetBuffer, PACKET_SIZE);
 				SafeDelete(packetBuffer);
 			}
-			LeaveCriticalSection(&sessionInfo->sendLock);
+			//LeaveCriticalSection(&sessionInfo->sendLock);
 			/*if (mPacketBufferNum * PACKET_SIZE != transferredBytes)
 			{
 				CONSOLE_LOG(LOG_LEVEL_ERROR, L"PacketBufferNum Error![BuffferNum:%d][transferByte:%d]", mPacketBufferNum, transferredBytes);
@@ -495,6 +495,15 @@ bool LanServer::SendPost(SessionInfo* sessionInfo)
 		CONSOLE_LOG(LOG_LEVEL_ERROR, L"mPacketBufferNum error [returnVal:%d]", retVal);
 		return false;
 	}
+	// 최대개수 예외처리 진행
+	if (sessionInfo->packetBufferNum > PACKET_MAX_BUFFER_SIZE)
+	{
+		CONSOLE_LOG(LOG_LEVEL_ERROR, L"mPacketBufferNum Exceed! [returnVal:%d][packetBufferNum:%d]"
+			, retVal, sessionInfo->packetBufferNum);
+		
+		sessionInfo->packetBufferNum = PACKET_MAX_BUFFER_SIZE;
+	}
+
 	for (int i = 0; i < sessionInfo->packetBufferNum; i++)
 	{
 		wsaBuffer[i].buf = packeBuffer[i]->GetBufferPtr();
