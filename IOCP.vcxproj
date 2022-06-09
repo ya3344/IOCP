@@ -122,6 +122,7 @@
       <ConformanceMode>false</ConformanceMode>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <DisableSpecificWarnings>4351</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -153,7 +154,7 @@
     <ClCompile Include="CrashDump.cpp" />
     <ClCompile Include="EchoServer.cpp" />
     <ClCompile Include="IOCP.cpp" />
-    <ClCompile Include="LanServer.cpp" />
+    <ClCompile Include="IocpServer.cpp" />
     <ClCompile Include="SystemLog.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
@@ -163,13 +164,15 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\Common\MemoryPool\MemoryPool.h" />
     <ClInclude Include="..\Common\PacketBuffer\PacketBuffer.h" />
     <ClInclude Include="..\Common\RingBuffer\RingBuffer.h" />
     <ClInclude Include="Constant.h" />
     <ClInclude Include="CrashDump.h" />
     <ClInclude Include="define.h" />
     <ClInclude Include="EchoServer.h" />
-    <ClInclude Include="LanServer.h" />
+    <ClInclude Include="IocpServer.h" />
+    <ClInclude Include="Protocol.h" />
     <ClInclude Include="SystemLog.h" />
     <ClInclude Include="Macro.h" />
     <ClInclude Include="pch.h" />

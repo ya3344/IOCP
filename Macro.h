@@ -1,4 +1,5 @@
 #pragma once
+
 template <typename T>
 inline void SafeDelete(T& obj)
 {
@@ -35,6 +36,15 @@ inline void Crash()
 	*p = 0;
 }
 
+#define CONSOLE_LOG(logLevel, fmt, ...)							\
+do {															\
+	if (gLogLevel <= logLevel)									\
+	{															\
+		wsprintf(gLogBuffer, fmt, ##__VA_ARGS__);				\
+		wprintf(L"[%s] %s\n", TEXT(__FUNCTION__), gLogBuffer);	\
+	}															\
+} while(0)
+
 #define DECLARE_SINGLETON(ClassName)			\
 public:											\
 	static ClassName* GetInstance()				\
@@ -60,11 +70,4 @@ private:										\
 #define IMPLEMENT_SINGLETON(ClassName)			\
 ClassName* ClassName::m_pInstance = nullptr;
 
-#define CONSOLE_LOG(logLevel, fmt, ...)							\
-do {															\
-	if (gLogLevel <= logLevel)									\
-	{															\
-		wsprintf(gLogBuffer, fmt, ##__VA_ARGS__);				\
-		wprintf(L"[%s] %s\n", TEXT(__FUNCTION__), gLogBuffer);	\
-	}															\
-} while(0)														\
+														

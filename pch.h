@@ -37,13 +37,15 @@
 #include <Psapi.h>
 //#include <minidumpapiset.h>
 #include <DbgHelp.h>
+#include <mutex>
+
 #pragma comment(lib, "Dbghelp.lib")
 using namespace std;
 
 
-#ifdef _DEBUG
-#define new new( _NORMAL_BLOCK, __FILE__, __LINE__ )                                            
-#endif
+//#ifdef _DEBUG
+//#define new new( _NORMAL_BLOCK, __FILE__, __LINE__ )                                            
+//#endif
 
 // Warning Ignore
 #pragma comment(lib, "imm32.lib")
@@ -54,6 +56,7 @@ using namespace std;
 #include "CrashDump.h"
 #include "Constant.h"
 #include "Macro.h"
+#include "Protocol.h"
 
 
 

@@ -10,11 +10,9 @@ int main()
     
 	EchoServer echoServer;
 
-	//SystemLog log;
 	if (echoServer.Start(L"127.0.0.1", 6000, 5, true, 50000) == false)
 		return EXIT_FAILURE;
 
-	
 	while (true)
 	{
 		if (GetAsyncKeyState(VK_SPACE))
@@ -24,8 +22,11 @@ int main()
 		}
 	}
 
-	WaitForMultipleObjects(echoServer.GetLanServer_MaxThreadNum(), echoServer.GetLanServer_Threads(), TRUE, INFINITE);
-	WaitForSingleObject(echoServer.Get_EchoThread(), INFINITE);
+	for (thread& threadData : echoServer.GetIocpServer_Threads())
+	{
+		if (threadData.joinable())
+			threadData.join();
+	}
 
 	timeEndPeriod(1);
 	return EXIT_SUCCESS;
