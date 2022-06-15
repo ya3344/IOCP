@@ -5,15 +5,19 @@ EchoServer::EchoServer()
 {
 	mThread = (HANDLE)_beginthreadex(NULL, 0, &WorkerThread, this, 0, &mThreadID);
 	_ASSERT(mThread != NULL);
+	mMonitorThraed = (HANDLE)_beginthreadex(NULL, 0, &MoinitorThread, this, 0, &mThreadID);
+	_ASSERT(mMonitorThraed != NULL);
+
 	mWorkThreadEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
 	_ASSERT(mWorkThreadEvent != NULL);
-	mJobQueue = new RingBuffer(300000);
+	mJobQueue = new RingBuffer(JOBQUEUE_MAX_BUFFER_SIZE);
 	_ASSERT(mJobQueue != NULL);
 }
 
 EchoServer::~EchoServer()
 {
 	CloseHandle(mThread);
+	CloseHandle(mMonitorThraed);
 	SafeDelete(mJobQueue);
 }
 
@@ -32,11 +36,11 @@ int EchoServer::WorkerThread_Working()
 	bool isUpdateProcess = false;
 	bool isSendPacket = false;
 
-	while (true)
+	while (mShutDown == false)
 	{
 		WaitForSingleObject(mWorkThreadEvent, INFINITE);
 
-		while (mJobQueue->GetUseSize() >= sizeof(sessionID))
+		while (mJobQueue->GetUseSize() >= sizeof(sessionID) + ECHO_SIZE)
 		{
 			retVal = mJobQueue->Peek((char*)&sessionID, sizeof(sessionID));
 			if (retVal != sizeof(sessionID))
@@ -44,7 +48,7 @@ int EchoServer::WorkerThread_Working()
 				CONSOLE_LOG(LOG_LEVEL_ERROR, L"sessionID Peek size Error [returnVal:%d]", retVal);
 				return 0;
 			}
-			CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"sessionID %lu", sessionID);
+			CONSOLE_LOG(LOG_LEVEL_DEBUG, L"sessionID %lu", sessionID);
 			mJobQueue->MoveReadPos(retVal);
 
 			sendPacketBuffer = mPacketBuffer.Alloc(); // sendPacketBuffer는 스레드간 경합이 발생하므로 LockFreeStack MemoryPool 사용
@@ -78,6 +82,39 @@ int EchoServer::WorkerThread_Working()
 			CONSOLE_LOG(LOG_LEVEL_DEBUG, L"WriteSize:%d  ReadSize:%d", mJobQueue->GetWriteSize(), mJobQueue->GetReadSize());
 		}
 	}
+	return 0;
+}
+
+unsigned __stdcall EchoServer::MoinitorThread(void* arguments)
+{
+	return ((EchoServer*)arguments)->MonitorThread_Working();
+}
+
+int EchoServer::MonitorThread_Working()
+{
+	while (mShutDown == false)
+	{
+		if (mFrameTime + 1000 < timeGetTime())
+		{
+			CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"JobQueue TPS:%d\n", mJobQueueTPS);
+			CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"Recv TPS:%d\n", mRecvTPS);
+			CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"RecvComplete TPS:%d\n", mRecvCompleteTPS);
+			CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"Send TPS:%d\n", mSendTPS);
+			CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"SendComplte TPS:%d\n", mSendCompleteTPS);
+			CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"PacketProcess TPS:%d\n", mPacketProcessTPS);
+			CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"JobQueue UseSize:%d", mJobQueue->GetUseSize());
+
+			mFrameTime = timeGetTime();
+			
+			InterlockedExchange(&mJobQueueTPS, 0);
+			InterlockedExchange(&mRecvTPS, 0);
+			InterlockedExchange(&mRecvCompleteTPS, 0);
+			InterlockedExchange(&mSendTPS, 0);
+			InterlockedExchange(&mSendCompleteTPS, 0);
+			InterlockedExchange(&mPacketProcessTPS, 0);
+		}
+	}
+
 	return 0;
 }
 
@@ -143,6 +180,7 @@ void EchoServer::OnRecv(const DWORD64 sessionID, const HeaderInfo& header, Packe
 void EchoServer::OnRecv(const DWORD64 sessionID, PacketBuffer& packetBuffer)	// DUMMY TEST 시 msgType 제거
 #endif
 {
+#ifdef WORKTHREAD_ENABLE
 	int retVal = 0;
 	{
 		lock_guard<mutex> guard(mJobQueueLock);
@@ -184,9 +222,18 @@ void EchoServer::OnRecv(const DWORD64 sessionID, PacketBuffer& packetBuffer)	// 
 				sessionID, retVal, mJobQueue->GetUseSize());
 			return;
 		};
+		++mJobQueueTPS;
 		SetEvent(mWorkThreadEvent);
 #endif
 	}
+#else
+	char data[PACKET_MAX_SIZE] = { 0 };
+	packetBuffer.GetData(data, packetBuffer.GetDataSize());
+	PacketBuffer* sendPacketBuffer = nullptr;
+	sendPacketBuffer = mPacketBuffer.Alloc(); // sendPacketBuffer는 스레드간 경합이 발생하므로 LockFreeStack MemoryPool 사용
+	EchoMakePacket(sendPacketBuffer, data, ECHO_SIZE);
+	SendPacket(sessionID, sendPacketBuffer);
+#endif
 }
 
 void EchoServer::OnDisconnect(const DWORD64 sessionID)

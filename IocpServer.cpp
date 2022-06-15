@@ -176,10 +176,10 @@ bool IocpServer::SendPacket(const DWORD64 sessionID, PacketBuffer* packetBuffer)
 	sessionInfo = mSessionArray[sessionArrayIndex];
 
 	// IOThread에서 세션이 종료되는 경우를 대비하여 ioCount를 증가시키고 ioCount return값이 1이라면 종료되었다고 판단
-	if (InterlockedIncrement(&sessionInfo->ioCount) == 1)	
-	{
-		return false;
-	}
+	//if (InterlockedIncrement(&sessionInfo->ioCount) == 1)	
+	//{
+	//	return false;
+	//}
 	// SendPacket에 진입하는 순간 Disconnect 후 Accept 되는 순간이 희박하게 발생하므로 예외처리 진행.
 	if (sessionInfo->sessionID != sessionID)
 	{
@@ -199,6 +199,8 @@ bool IocpServer::SendPacket(const DWORD64 sessionID, PacketBuffer* packetBuffer)
 
 	CONSOLE_LOG(LOG_LEVEL_DEBUG, L"[SessionID:%lu] PacketBuffer Size:%d SendRingBuffer useSize:%d",
 		sessionInfo->sessionID, packetBuffer->GetDataSize(), sessionInfo->sendRingBuffer->GetUseSize());
+
+	InterlockedIncrement(&mPacketProcessTPS);
 
 	// Wsa Send 함수 진행
 	SendProcess(sessionInfo);
@@ -261,7 +263,7 @@ int IocpServer::AcceptThread_Working()
 
 		// 컨텐츠 부에서 접속 후 유저 기본 세팅 진행
 		OnConnectionSuccess(sessionInfo->sessionID);
-		CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"[CHAT SERVER] Client IP: %s Clinet Port:%d", clientIP, ntohs(clientaddr.sin_port));
+		CONSOLE_LOG(LOG_LEVEL_DEBUG, L"[CHAT SERVER] Client IP: %s Clinet Port:%d", clientIP, ntohs(clientaddr.sin_port));
 
 		// WSA RECV 비동기 시작
 		RecvPost(sessionInfo);
@@ -312,10 +314,11 @@ int IocpServer::IOThread_Working()
 		if (transferredBytes == 0)
 		{
 			//연결종료
-			CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"User Exit transferredBytes0![SesssionID:%d]", sessionInfo->sessionID);
+			CONSOLE_LOG(LOG_LEVEL_DEBUG, L"User Exit transferredBytes0![SesssionID:%lu]", sessionInfo->sessionID);
 		}
 		else if (overlapped == &(sessionInfo->recvOverlapped))
 		{
+			InterlockedIncrement(&mRecvCompleteTPS);
 			CONSOLE_LOG(LOG_LEVEL_DEBUG, L"sessionInfo->recvOverlapped[transferredBytes:%d][SesssionID:%lu]",
 				transferredBytes
 				,sessionInfo->sessionID);
@@ -330,6 +333,7 @@ int IocpServer::IOThread_Working()
 		}
 		else if (overlapped == &(sessionInfo->sendOverlapped))
 		{
+			InterlockedIncrement(&mSendCompleteTPS);
 			for (int i = 0; i < sessionInfo->packetBufferNum; i++)
 			{
 				packetBuffer = nullptr;
@@ -340,12 +344,12 @@ int IocpServer::IOThread_Working()
 						,retSize, sessionInfo->sessionID);
 					break;
 				}
-				mPacketBuffer.Free(packetBuffer); // MemoryPool 반환
+				//mPacketBuffer.Free(packetBuffer); // MemoryPool 반환
 			}
 			sessionInfo->packetBufferNum = 0;
-			CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"WSA Send Clear[%d Bytes]", transferredBytes);
+			CONSOLE_LOG(LOG_LEVEL_DEBUG, L"WSA Send Clear[%d Bytes]", transferredBytes);
 
-			CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"SendRingBuffer UseSize:%d WirtePos:%d ReadPos:%d PacketBufferUseCount:%d",
+			CONSOLE_LOG(LOG_LEVEL_DEBUG, L"SendRingBuffer UseSize:%d WirtePos:%d ReadPos:%d PacketBufferUseCount:%d",
 				sessionInfo->sendRingBuffer->GetUseSize(), sessionInfo->sendRingBuffer->GetWriteSize(),
 				sessionInfo->sendRingBuffer->GetReadSize(),mPacketBuffer.GetUseCount());
 
@@ -400,7 +404,7 @@ IocpServer::SessionInfo* IocpServer::AddSessionInfo(const SOCKET clientSock, SOC
 
 	InterlockedIncrement(&mUserCount); // 유저수 증가
 
-	CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"AddSession [sessionID:%lu][Index:%d][UserNum:%d]",
+	CONSOLE_LOG(LOG_LEVEL_DEBUG, L"AddSession [sessionID:%lu][Index:%d][UserNum:%d]",
 		mSessionArray[sessionIndex->index]->sessionID, sessionIndex->index, mUserCount);
 
 	return mSessionArray[sessionIndex->index];
@@ -458,7 +462,7 @@ bool IocpServer::SendPost(SessionInfo* sessionInfo)
 		wsaBuffer[i].buf = packeBuffer[i]->GetBufferPtr();
 		wsaBuffer[i].len = packeBuffer[i]->GetDataSize();
 
-		CONSOLE_LOG(LOG_LEVEL_ERROR, L"WSASend Size:%d[sessionID:%d]"
+		CONSOLE_LOG(LOG_LEVEL_DEBUG, L"WSASend Size:%d[sessionID:%d]"
 			,wsaBuffer[i].len, sessionInfo->sessionID);
 	}
 
@@ -476,12 +480,14 @@ bool IocpServer::SendPost(SessionInfo* sessionInfo)
 			CONSOLE_LOG(LOG_LEVEL_ERROR, L"WSASend error:%d", WSAGetLastError());
 			// 에러 시 다시 IOCount 감소
 			InterlockedDecrement(&sessionInfo->ioCount);
+			return true;
 		}
 		else
 		{
-			CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"WSA Send IO_PENDIHNG");
+			CONSOLE_LOG(LOG_LEVEL_DEBUG, L"WSA Send IO_PENDIHNG");
 		}
 	}
+	InterlockedIncrement(&mSendTPS);
 
 	return true;
 }
@@ -516,9 +522,10 @@ void IocpServer::RecvPost(SessionInfo* sessionInfo)
 		}
 		else
 		{
-			CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"WSARecv IO_PENDING");
+			CONSOLE_LOG(LOG_LEVEL_DEBUG, L"WSARecv IO_PENDING");
 		}
 	}
+	InterlockedIncrement(&mRecvTPS);
 }
 
 void IocpServer::RecvProcess(const SessionInfo* sessionInfo)
@@ -567,9 +574,9 @@ void IocpServer::RecvProcess(const SessionInfo* sessionInfo)
 			CONSOLE_LOG(LOG_LEVEL_ERROR, L"Packet MoveWritePos OverFlow[%d]", retVal);
 			return;
 		}
-		CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"RECV:%s Size:%d", (WCHAR*)packetBuffer.GetBufferPtr(), retVal);
+		CONSOLE_LOG(LOG_LEVEL_DEBUG, L"RECV:%s Size:%d", (WCHAR*)packetBuffer.GetBufferPtr(), retVal);
 
-		CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"[sessionID:%lu] RecvRingBuf WriteSize:%d ReadSize:%d",
+		CONSOLE_LOG(LOG_LEVEL_DEBUG, L"[sessionID:%lu] RecvRingBuf WriteSize:%d ReadSize:%d",
 			sessionInfo->sessionID,
 			sessionInfo->recvRingBuffer->GetWriteSize(),
 			sessionInfo->recvRingBuffer->GetReadSize());
@@ -621,7 +628,7 @@ void IocpServer::Disconnect(SessionInfo* sessionInfo)
 	// 유저카운트 체크
 	InterlockedDecrement(&mUserCount);
 
-	CONSOLE_LOG(LOG_LEVEL_DISPLAY, L"Disconnect [SessionID:%lu][Index:%d][UserNum:%d][IndexUseCount:%d][IOCount:%d]", 
+	CONSOLE_LOG(LOG_LEVEL_DEBUG, L"Disconnect [SessionID:%lu][Index:%d][UserNum:%d][IndexUseCount:%d][IOCount:%d]", 
 		sessionInfo->sessionID, mSessionIndexInfo[sessionArrayIndex]->index, mUserCount, mSessionIndex.GetUseCount(), sessionInfo->ioCount);
 
 	// 세션이 종료 됐다는 부분 표시 진행

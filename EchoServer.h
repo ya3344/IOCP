@@ -10,6 +10,8 @@ public:
 private:
 	static unsigned __stdcall WorkerThread(void* arguments);
 	int WorkerThread_Working();	// 실질적인 쓰레드 실행 부
+	static unsigned __stdcall MoinitorThread(void* arguments);
+	int MonitorThread_Working(); // 실질적인 쓰레드 실행 부
 
 private:
 #ifdef NORMAL_VERSION
@@ -41,13 +43,17 @@ public: // 실제 컨테츠 부에서 실행 할 가상함수
 	virtual void OnDisconnect(const DWORD64 sessionID) override;	
 
 private: // 쓰레드 관련 변수
-	HANDLE mThread = nullptr;
+	HANDLE mThread = NULL;
+	HANDLE mMonitorThraed = NULL;
 	unsigned int mThreadID = 0;
-	HANDLE mWorkThreadEvent = nullptr;
+	HANDLE mWorkThreadEvent = NULL;
 	mutex mJobQueueLock;
 
 private:
 	RingBuffer* mJobQueue = nullptr;
+
+private: //디버깅용 변수
+	DWORD mFrameTime = timeGetTime();
 
 };
 

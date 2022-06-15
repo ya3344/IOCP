@@ -16,11 +16,12 @@ public:
 		PACKET_MAX_SIZE = 100,
 		POINTER_SIZE = 8,
 		ECHO_SIZE = 8,
-		MAX_SESSION_DATA_NUM = 500,
+		MAX_SESSION_DATA_NUM = 3000,
 		SESSION_ARRAY_INDEX_MASK = 65535,
 		PACKET_MAX_BUFFER_SIZE = 500,
 		PACKET_MAX_NUM = 10000,
 		DISCONNECT_SESSION_INDEX = 0,
+		JOBQUEUE_MAX_BUFFER_SIZE = 100000,
 	};
 public:
 	struct SessionInfo
@@ -116,7 +117,6 @@ private: // 소켓 관련 변수
 
 private: // 쓰레드 관련 변수
 	unsigned int mThreadID = 0;
-	bool mShutDown = false;
 	vector<thread> mThreadData;
 	static constexpr float ADD_WORKER_THREAD_NUM = 1.3f;
 
@@ -124,8 +124,10 @@ private: // 세션관련 변수
 	DWORD64 mSessionID_Num = 0;
 	SessionIndexInfo* mSessionIndexInfo[MAX_SESSION_DATA_NUM] = { 0 };
 	MemoryPool<SessionIndexInfo> mSessionIndex;
+
 protected:
 	SessionInfo* mSessionArray[MAX_SESSION_DATA_NUM] = { 0 };
+	bool mShutDown = false;
 
 private: // 유저체크 변수
 	long mUserCount = 0;
@@ -135,5 +137,14 @@ protected:
 	MemoryPool<PacketBuffer> mPacketBuffer;
 	SessionMemoryLogInfo mMemoryLog[MEMORY_LOG_MAX_NUM];
 	long mMemoryLogIndex = -1;
+
+// 디버깅용 변수
+protected:
+	__declspec(align(64)) long mSendTPS = 0;
+	__declspec(align(64)) long mRecvTPS = 0;
+	__declspec(align(64)) long mRecvCompleteTPS = 0;
+	__declspec(align(64)) long mSendCompleteTPS = 0;
+	__declspec(align(64)) unsigned long mJobQueueTPS = 0;
+	__declspec(align(64)) unsigned long mPacketProcessTPS = 0;
 };
 

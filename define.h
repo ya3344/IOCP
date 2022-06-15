@@ -5,6 +5,8 @@
 #define DUMMY_TEST_VERSION		1
 #endif
 
+//#define WORKTHREAD_ENABLE
+
 enum LOG_INDEX
 {
 	LOG_LEVEL_DEBUG = 0,
